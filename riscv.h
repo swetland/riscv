@@ -40,4 +40,4 @@ static inline uint32_t get_ij(uint32_t ins) {
 #define OP_JALR 0b1100111
 #define OP_B
 
-void rvdis(uint32_t ins, char *out);
+void rvdis(uint32_t pc, uint32_t ins, char *out);

@@ -15,6 +15,10 @@ static char *append_i32(char *buf, int32_t n) {
 	return buf + sprintf(buf, "%d", n);
 }
 
+static char *append_u32(char *buf, int32_t n) {
+	return buf + sprintf(buf, "0x%x", n);
+}
+
 static const char* regname[32] = {
 #if 0
 	"x0", "x1", "x2", "x3", "x4", "x5", "x6", "x7",
@@ -39,7 +43,7 @@ static rvins_t instab[] = {
 #include "gen/instab.h"
 };
 
-void rvdis(uint32_t ins, char *out) {
+void rvdis(uint32_t pc, uint32_t ins, char *out) {
 	unsigned n = 0;
 	while ((ins & instab[n].mask) != instab[n].bits) n++;
 	const char* fmt = instab[n].fmt;
@@ -55,7 +59,9 @@ void rvdis(uint32_t ins, char *out) {
 		case 'd': out = append_str(out, regname[get_rd(ins)]); break;
 		case 'i': out = append_i32(out, get_ii(ins)); break;
 		case 'j': out = append_i32(out, get_ij(ins)); break;
+		case 'J': out = append_u32(out, pc + get_ij(ins)); break;
 		case 'b': out = append_i32(out, get_ib(ins)); break;
+		case 'B': out = append_u32(out, pc + (2 * get_ib(ins))); break;
 		case 's': out = append_i32(out, get_is(ins)); break;
 		case 'u': out = append_i32(out, get_iu(ins)); break;
 		case 'x': out = append_i32(out, get_r2(ins)); break;

@@ -55,7 +55,7 @@ void rvsim(rvstate* s) {
 	pc = s->pc;
 	while (pc < 64) {
 		ins = rd32(pc);
-		rvdis(ins, dis);
+		rvdis(pc, ins, dis);
 		printf("%08x: %08x %s\n", pc, ins, dis);
 		pc += 4;
 	}
