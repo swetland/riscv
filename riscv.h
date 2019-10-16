@@ -28,7 +28,7 @@ static inline uint32_t get_iu(uint32_t ins) {
 	return ins & 0xFFFFF000;
 }
 static inline uint32_t get_ij(uint32_t ins) {
-	return (((int32_t)ins) >> 11) |
+	return (((int32_t)(ins & 0x80000000)) >> 11) |
 		(ins & 0xFF000) |
 		((ins >> 9) & 0x800) |
 		((ins >> 20) & 0x7fe);
