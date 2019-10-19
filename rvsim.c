@@ -34,14 +34,29 @@ int load_image(const char* fn, uint8_t* ptr, size_t sz) {
 	return 0;
 }
 
+uint32_t ior32(uint32_t addr) {
+	return 0xffffffff;
+}
+
+void iow32(uint32_t addr, uint32_t val) {
+}
+
 uint32_t rd32(uint32_t addr) {
-	addr &= (sizeof(memory) - 1);
-	return ((uint32_t*) memory)[addr >> 2];
+	if (addr < 0x80000000) {
+		return ior32(addr);
+	} else {
+		addr &= (sizeof(memory) - 1);
+		return ((uint32_t*) memory)[addr >> 2];
+	}
 }
 
 void wr32(uint32_t addr, uint32_t val) {
-	addr &= (sizeof(memory) - 1);
-	((uint32_t*) memory)[addr >> 2] = val;
+	if (addr < 0x80000000) {
+		iow32(addr, val);
+	} else {
+		addr &= (sizeof(memory) - 1);
+		((uint32_t*) memory)[addr >> 2] = val;
+	}
 }
 
 typedef struct {
@@ -53,7 +68,7 @@ void rvsim(rvstate* s) {
 	char dis[128];
 	uint32_t pc, ins;
 	pc = s->pc;
-	while (pc < 64) {
+	while (pc < 0x80000100) {
 		ins = rd32(pc);
 		rvdis(pc, ins, dis);
 		printf("%08x: %08x %s\n", pc, ins, dis);
@@ -66,6 +81,7 @@ int main(int argc, char** argv) {
 	rvstate s;
 	if (load_image("out/hello.bin", memory, sizeof(memory)) < 0) return -1;
 	memset(&s, 0, sizeof(s));
+	s.pc = 0x80000000;
 	rvsim(&s);
 	return 0;
 }
