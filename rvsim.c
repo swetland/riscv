@@ -174,9 +174,9 @@ void rvsim(rvstate_t* s) {
 			}
 		case OC_OP: {
 			uint32_t a = RdR1();
-			uint32_t b = RdR1();
+			uint32_t b = RdR2();
 			uint32_t n;
-			if (ins & 0xDE000000) goto inval;
+			if (ins & 0xBE000000) goto inval;
 			switch (get_fn3(ins) | (ins >> 27)) {
 			case F3_ADD: n = a + b; break;
 			case F3_SLL: n = a << (b & 31); break;
