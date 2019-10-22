@@ -11,13 +11,6 @@
 
 #include "riscv.h"
 
-static const char* regname[32] = {
-        "zero", "ra", "sp", "gp", "tp", "t0", "t1", "t2",
-        "s0", "s1", "a0", "a1", "a2", "a3", "a4", "a5",
-        "a6", "a7", "s2", "s3", "s4", "s5", "s6", "s7",
-        "s8", "s9", "s10", "s11", "t3", "t4", "t5", "t6",
-};
-
 uint8_t memory[32768];
 
 int load_image(const char* fn, uint8_t* ptr, size_t sz) {
@@ -81,24 +74,30 @@ static inline void wreg(rvstate_t* s, uint32_t n, uint32_t v) {
 
 #define RdR1() rreg(s, get_r1(ins))
 #define RdR2() rreg(s, get_r2(ins))
+#define RdRd() rreg(s, get_rd(ins))
 #define WrRd(v) wreg(s, get_rd(ins), v)
 
 #define DO_DISASM 1
 #define DO_TRACK  1
 
+#define trace_reg(fmt...) printf(fmt...)
+
+#define trace_reg_wr(v) do {\
+	printf("          (%s = %08x)\n", \
+		rvregname(get_rd(ins)), v); \
+	} while (0)
+
+#define trace_mem_wr(a, v) do {\
+	printf("          ([%08x] = %08x)\n", a, v);\
+	} while (0)
+
 void rvsim(rvstate_t* s) {
-#if DO_TRACK
-	uint32_t last[32];
-#endif
 	uint32_t pc = s->pc;
 	uint32_t next = pc;
 	uint32_t ccount = 0;
 	uint32_t ins;
 	for (;;) {
 		pc = next;
-#if DO_TRACK
-		memcpy(last, &s->x, sizeof(last));
-#endif
 		ins = rd32(pc);
 #if DO_DISASM
 		char dis[128];
@@ -108,15 +107,19 @@ void rvsim(rvstate_t* s) {
 		next = pc + 4;
 		ccount++;
 		switch (get_oc(ins)) {
-		case OC_LOAD:
+		case OC_LOAD: {
+			uint32_t v;
 			switch (get_fn3(ins)) {
 			case F3_LW:
-				WrRd(rd32(RdR1() + get_ii(ins)));
+				v = rd32(RdR1() + get_ii(ins));
 				break;
 			default:
 				goto inval;
 			}
+			WrRd(v);
+			trace_reg_wr(v);
 			break;
+		}
 		case OC_CUSTOM_0:
 			goto inval;
 		case OC_MISC_MEM:
@@ -126,7 +129,7 @@ void rvsim(rvstate_t* s) {
 		case OC_OP_IMM: {
 			uint32_t a = RdR1();
 			uint32_t b = get_ii(ins);
-			uint32_t n;
+			uint32_t n = 0xe1e1e1e1;
 			switch (get_fn3(ins)) {
 			case F3_ADDI: n = a + b; break;
 			case F3_SLLI:
@@ -147,18 +150,27 @@ void rvsim(rvstate_t* s) {
 			case F3_ANDI: n = a & b; break;
 			}
 			WrRd(n);
+			trace_reg_wr(n);
 			break;
 			}
-		case OC_AUIPC:
-			WrRd(pc + get_iu(ins));
+		case OC_AUIPC: {
+			uint32_t v = pc + get_iu(ins);
+			WrRd(v);
+			trace_reg_wr(v);
 			break;
-		case OC_STORE:
+			}
+		case OC_STORE: {
+			uint32_t a = RdR1() + get_is(ins);
+			uint32_t v = RdR2();
 			switch (get_fn3(ins)) {
 			case F3_SW:
-				wr32(RdR2() + get_is(ins), RdR1());
+				wr32(a, v);
+				trace_mem_wr(a, v);
 				break;
 			default:
 				goto inval;
+			}
+			break;
 			}
 		case OC_OP: {
 			uint32_t a = RdR1();
@@ -179,11 +191,15 @@ void rvsim(rvstate_t* s) {
 			default: goto inval;
 			}
 			WrRd(n);
+			trace_reg_wr(n);
 			break;
 			}
-		case OC_LUI:
-			WrRd(get_iu(ins));
+		case OC_LUI: {
+			uint32_t v = get_iu(ins);
+			WrRd(v);
+			trace_reg_wr(v);
 			break;
+			}
 		case OC_BRANCH: {
 			uint32_t a = RdR1();
 			uint32_t b = RdR2();
@@ -204,10 +220,12 @@ void rvsim(rvstate_t* s) {
 		case OC_JALR:
 			if (get_fn3(ins) != 0) goto inval;
 			WrRd(next);
+			trace_reg_wr(next);
 			next = RdR1() + (get_ii(ins) << 1);
 			break;
 		case OC_JAL:
 			WrRd(next);
+			trace_reg_wr(next);
 			next = pc + get_ij(ins);
 			break;
 		case OC_SYSTEM:
@@ -216,24 +234,60 @@ void rvsim(rvstate_t* s) {
 		inval:
 			return;
 		}
-#if DO_TRACK
-		for (unsigned n = 1; n < 32; n++) {
-			if (s->x[n] != last[n]) {
-				printf("          (%s = 0x%08x)\n",
-					regname[n], s->x[n]);
-			}
-		}
-#endif
 	}
 }
 
 
 int main(int argc, char** argv) {
+	const char* fn = NULL;
+	const char* dumpfn = NULL;
+	uint32_t dumpfrom = 0, dumpto = 0;
+	while (argc > 1) {
+		argc--;
+		argv++;
+		if (argv[0][0] != '-') {
+			if (fn != NULL) {
+				fprintf(stderr, "error: multiple inputs\n");
+				return -1;
+			}
+			fn = argv[0];
+			continue;
+		}
+		if (!strncmp(argv[0],"-dump=",6)) {
+			dumpfn = argv[0] + 6;
+			continue;
+		}
+		if (!strncmp(argv[0],"-from=",6)) {
+			dumpfrom = strtoul(argv[0] + 6, NULL, 16);
+			continue;
+		}
+		if (!strncmp(argv[0],"-to=",4)) {
+			dumpto = strtoul(argv[0] + 4, NULL, 16);
+			continue;
+		}
+		fprintf(stderr, "error: unknown argument: %s\n", argv[0]);
+		return -1;
+	}
 	rvstate_t s;
-	if (load_image("out/hello.bin", memory, sizeof(memory)) < 0) return -1;
+	if (load_image(fn, memory, sizeof(memory)) < 0) {
+		fprintf(stderr, "error: failed to load '%s'\n", fn);
+		return -1;
+	}
 	memset(&s, 0, sizeof(s));
 	s.pc = 0x80000000;
 	rvsim(&s);
+	if (dumpfn && (dumpto > dumpfrom)) {
+		FILE* fp;
+		if ((fp = fopen(dumpfn, "w")) == NULL) {
+			fprintf(stderr, "error: failed to open '%s' to write\n", dumpfn);
+			return -1;
+		}
+		for (uint32_t n = dumpfrom; n < dumpto; n += 4) {
+			uint32_t v = rd32(n);
+			fprintf(fp, "%08x\n", v);
+		}
+		fclose(fp);
+	}
 	return 0;
 }
 

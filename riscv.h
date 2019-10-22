@@ -102,3 +102,5 @@ static inline uint32_t get_fn7(uint32_t ins) {
 #define F3_BGEU 0b111
 
 void rvdis(uint32_t pc, uint32_t ins, char *out);
+const char* rvregname(uint32_t n);
+
