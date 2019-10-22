@@ -207,14 +207,14 @@ void rvsim(rvstate_t* s) {
 			switch (get_fn3(ins)) {
 			case F3_BEQ: p = (a == b); break;
 			case F3_BNE: p = (a != b); break;
-			case F3_BLT: p = (((int32_t)a) == ((int32_t)b)); break;
-			case F3_BGE: p = (((int32_t)a) == ((int32_t)b)); break;
-			case F3_BLTU: p = (a <= b); break;
+			case F3_BLT: p = (((int32_t)a) < ((int32_t)b)); break;
+			case F3_BGE: p = (((int32_t)a) >= ((int32_t)b)); break;
+			case F3_BLTU: p = (a < b); break;
 			case F3_BGEU: p = (a >= b); break;
 			default:
 				goto inval;
 			}
-			if (p) next = pc + (get_ib(ins) << 1);
+			if (p) next = pc + get_ib(ins);
 			break;
 			}
 		case OC_JALR:

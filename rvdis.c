@@ -71,7 +71,7 @@ void rvdis(uint32_t pc, uint32_t ins, char *out) {
 		case 'j': out = append_i32(out, get_ij(ins)); break;
 		case 'J': out = append_u32(out, pc + get_ij(ins)); break;
 		case 'b': out = append_i32(out, get_ib(ins)); break;
-		case 'B': out = append_u32(out, pc + (2 * get_ib(ins))); break;
+		case 'B': out = append_u32(out, pc + get_ib(ins)); break;
 		case 's': out = append_i32(out, get_is(ins)); break;
 		case 'u': out = append_i32(out, get_iu(ins)); break;
 		case 'U': out = append_u32(out, get_iu(ins)); break;
