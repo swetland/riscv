@@ -49,13 +49,40 @@ uint32_t rd32(uint32_t addr) {
 		return ((uint32_t*) memory)[addr >> 2];
 	}
 }
-
 void wr32(uint32_t addr, uint32_t val) {
 	if (addr < 0x80000000) {
 		iow32(addr, val);
 	} else {
 		addr &= (sizeof(memory) - 1);
 		((uint32_t*) memory)[addr >> 2] = val;
+	}
+}
+uint32_t rd16(uint32_t addr) {
+	if (addr < 0x80000000) {
+		return 0xffff;
+	} else {
+		addr &= (sizeof(memory) - 1);
+		return ((uint16_t*) memory)[addr >> 1];
+	}
+}
+void wr16(uint32_t addr, uint32_t val) {
+	if (addr >= 0x80000000) {
+		addr &= (sizeof(memory) - 1);
+		((uint16_t*) memory)[addr >> 1] = val;
+	}
+}
+uint32_t rd8(uint32_t addr) {
+	if (addr < 0x80000000) {
+		return 0xff;
+	} else {
+		addr &= (sizeof(memory) - 1);
+		return memory[addr];
+	}
+}
+void wr8(uint32_t addr, uint32_t val) {
+	if (addr >= 0x80000000) {
+		addr &= (sizeof(memory) - 1);
+		memory[addr] = val;
 	}
 }
 
@@ -108,11 +135,16 @@ void rvsim(rvstate_t* s) {
 		ccount++;
 		switch (get_oc(ins)) {
 		case OC_LOAD: {
+			uint32_t a = RdR1() + get_ii(ins);
 			uint32_t v;
 			switch (get_fn3(ins)) {
-			case F3_LW:
-				v = rd32(RdR1() + get_ii(ins));
-				break;
+			case F3_LW: v = rd32(a); break;
+			case F3_LHU: v = rd16(a); break;
+			case F3_LBU: v = rd8(a); break;
+			case F3_LH: v = rd16(a);
+				if (v & 0x8000) { v |= 0xFFFF0000; } break;
+			case F3_LB: v = rd8(a);
+				if (v & 0x80) { v |= 0xFFFFFF00; } break;
 			default:
 				goto inval;
 			}
@@ -163,13 +195,13 @@ void rvsim(rvstate_t* s) {
 			uint32_t a = RdR1() + get_is(ins);
 			uint32_t v = RdR2();
 			switch (get_fn3(ins)) {
-			case F3_SW:
-				wr32(a, v);
-				trace_mem_wr(a, v);
-				break;
+			case F3_SW: wr32(a, v); break;
+			case F3_SH: wr16(a, v); break;
+			case F3_SB: wr8(a, v); break;
 			default:
 				goto inval;
 			}
+			trace_mem_wr(a, v);
 			break;
 			}
 		case OC_OP: {
