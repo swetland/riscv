@@ -89,6 +89,7 @@ void wr8(uint32_t addr, uint32_t val) {
 typedef struct {
 	uint32_t x[32];
 	uint32_t pc;
+	uint32_t mscratch;
 } rvstate_t;
 
 static inline uint32_t rreg(rvstate_t* s, uint32_t n) {
@@ -98,6 +99,21 @@ static inline void wreg(rvstate_t* s, uint32_t n, uint32_t v) {
 	s->x[n] = v;
 }
 
+static void put_csr(rvstate_t* s, uint32_t csr, uint32_t v) {
+	switch (csr) {
+	case CSR_MSCRATCH:
+		s->mscratch = v;
+		break;
+	}
+}
+static uint32_t get_csr(rvstate_t* s, uint32_t csr) {
+	switch (csr) {
+	case CSR_MSCRATCH:
+		return s->mscratch;
+	default:
+		return 0;
+	}
+}
 
 #define RdR1() rreg(s, get_r1(ins))
 #define RdR2() rreg(s, get_r2(ins))
@@ -264,8 +280,35 @@ void rvsim(rvstate_t* s) {
 			trace_reg_wr(next);
 			next = pc + get_ij(ins);
 			break;
-		case OC_SYSTEM:
-			goto inval;
+		case OC_SYSTEM: {
+			uint32_t fn = get_fn3(ins);
+			if (fn == 0) {
+				goto inval;
+			}
+			uint32_t c = get_iC(ins);
+			uint32_t nv = (fn & 4) ? get_ic(ins) : RdR1();
+			uint32_t ov = 0;
+			switch (fn & 3) {
+			case F3_CSRRW:
+				// only reads of Rd != x0
+				if (get_rd(ins)) ov = get_csr(s, c);
+				put_csr(s, c, nv);
+				break;
+			case F3_CSRRS:
+				// only writes if nv != 0
+				ov = get_csr(s, c);
+				if (nv) put_csr(s, c, ov | nv);
+				WrRd(ov);
+				break;
+			case F3_CSRRC:
+				// only writes if nv != 0
+				ov = get_csr(s, c);
+				if (nv) put_csr(s, c, ov & (~nv));
+				break;
+			}
+			WrRd(ov);
+			break;
+			}
 		default:
 		inval:
 			return;
