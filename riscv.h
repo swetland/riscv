@@ -112,6 +112,10 @@ static inline uint32_t get_iC(uint32_t ins) {
 #define F3_CSRRS 0b10
 #define F3_CSRRC 0b11
 
+// further discrimination of OC_MISC_MEM (14:12)
+#define F3_FENCE   0b000
+#define F3_FENCE_I 0b001
+
 // CSR values
 #define CSR_MVENDORID   0xF11
 #define CSR_MARCHID     0xF12

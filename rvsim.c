@@ -173,8 +173,13 @@ void rvsim(rvstate_t* s) {
 		case OC_CUSTOM_0:
 			goto inval;
 		case OC_MISC_MEM:
-			if (get_fn3(ins) != 0) goto inval;
-			// fence -- do nothing
+			switch (get_fn3(ins)) {
+			case F3_FENCE:
+			case F3_FENCE_I:
+				break;
+			default:
+				goto inval;
+			}
 			break;
 		case OC_OP_IMM: {
 			uint32_t a = RdR1();
