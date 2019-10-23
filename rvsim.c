@@ -90,6 +90,10 @@ typedef struct {
 	uint32_t x[32];
 	uint32_t pc;
 	uint32_t mscratch;
+	uint32_t mtvec;
+	uint32_t mtval;
+	uint32_t mepc;
+	uint32_t mcause;
 } rvstate_t;
 
 static inline uint32_t rreg(rvstate_t* s, uint32_t n) {
@@ -101,15 +105,25 @@ static inline void wreg(rvstate_t* s, uint32_t n, uint32_t v) {
 
 static void put_csr(rvstate_t* s, uint32_t csr, uint32_t v) {
 	switch (csr) {
-	case CSR_MSCRATCH:
-		s->mscratch = v;
-		break;
+	case CSR_MSCRATCH: s->mscratch = v; break;
+	case CSR_MTVEC:    s->mtvec = v & 0xFFFFFFFC; break;
+	case CSR_MTVAL:    s->mtval = v; break;
+	case CSR_MEPC:     s->mepc = v; break;
+	case CSR_MCAUSE:   s->mcause = v; break;
 	}
 }
 static uint32_t get_csr(rvstate_t* s, uint32_t csr) {
 	switch (csr) {
-	case CSR_MSCRATCH:
-		return s->mscratch;
+	case CSR_MISA:      return 0x40000100; // RV32I
+	case CSR_MVENDORID: return 0; // NONE
+	case CSR_MARCHID:   return 0; // NONE
+	case CSR_MIMPID:    return 0; // NONE
+	case CSR_MHARTID:   return 0; // Thread Zero
+	case CSR_MSCRATCH:  return s->mscratch;
+	case CSR_MTVEC:	    return s->mtvec;
+	case CSR_MTVAL:	    return s->mtval;
+	case CSR_MEPC:	    return s->mepc;
+	case CSR_MCAUSE:    return s->mcause;
 	default:
 		return 0;
 	}
@@ -142,7 +156,16 @@ void rvsim(rvstate_t* s) {
 	uint32_t ccount = 0;
 	uint32_t ins;
 	for (;;) {
-		pc = next;
+		if (next & 3) {
+			s->mcause = EC_I_ALIGN;
+			s->mepc = pc;
+			s->mtval = next;
+trap_common:
+			s->mepc = pc;
+			pc = s->mtvec & 0xFFFFFFFD;
+		} else {
+			pc = next;
+		}
 		ins = rd32(pc);
 #if DO_DISASM
 		char dis[128];
@@ -156,10 +179,16 @@ void rvsim(rvstate_t* s) {
 			uint32_t a = RdR1() + get_ii(ins);
 			uint32_t v;
 			switch (get_fn3(ins)) {
-			case F3_LW: v = rd32(a); break;
-			case F3_LHU: v = rd16(a); break;
+			case F3_LW:
+				if (a & 3) goto trap_load_align;
+				v = rd32(a); break;
+			case F3_LHU:
+				if (a & 1) goto trap_load_align;
+				v = rd16(a); break;
 			case F3_LBU: v = rd8(a); break;
-			case F3_LH: v = rd16(a);
+			case F3_LH:
+				if (a & 1) goto trap_load_align;
+				v = rd16(a);
 				if (v & 0x8000) { v |= 0xFFFF0000; } break;
 			case F3_LB: v = rd8(a);
 				if (v & 0x80) { v |= 0xFFFFFF00; } break;
@@ -169,6 +198,10 @@ void rvsim(rvstate_t* s) {
 			WrRd(v);
 			trace_reg_wr(v);
 			break;
+		trap_load_align:
+			s->mcause = EC_L_ALIGN;
+			s->mtval = a;
+			goto trap_common;
 		}
 		case OC_CUSTOM_0:
 			goto inval;
@@ -218,14 +251,23 @@ void rvsim(rvstate_t* s) {
 			uint32_t a = RdR1() + get_is(ins);
 			uint32_t v = RdR2();
 			switch (get_fn3(ins)) {
-			case F3_SW: wr32(a, v); break;
-			case F3_SH: wr16(a, v); break;
-			case F3_SB: wr8(a, v); break;
+			case F3_SW:
+				if (a & 3) goto trap_store_align;
+				wr32(a, v); break;
+			case F3_SH:
+				if (a & 1) goto trap_store_align;
+				wr16(a, v); break;
+			case F3_SB:
+				wr8(a, v); break;
 			default:
 				goto inval;
 			}
 			trace_mem_wr(a, v);
 			break;
+		trap_store_align:
+			s->mcause = EC_S_ALIGN;
+			s->mtval = a;
+			goto trap_common;
 			}
 		case OC_OP: {
 			uint32_t a = RdR1();
@@ -288,7 +330,22 @@ void rvsim(rvstate_t* s) {
 		case OC_SYSTEM: {
 			uint32_t fn = get_fn3(ins);
 			if (fn == 0) {
-				goto inval;
+				switch(ins >> 7) {
+				case 0b0000000000000000000000000: // ecall
+					s->mcause = EC_ECALL_FROM_M;
+					s->mtval = 0;
+					goto trap_common;
+				case 0b0000000000010000000000000: // ebreak
+					s->mcause = EC_BREAKPOINT;
+					s->mtval = 0;
+					goto trap_common;
+				case 0b0011000000100000000000000: // mret
+					next = s->mepc;
+					break;
+				default:
+					goto inval;
+				}
+				break;
 			}
 			uint32_t c = get_iC(ins);
 			uint32_t nv = (fn & 4) ? get_ic(ins) : RdR1();

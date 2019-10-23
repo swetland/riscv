@@ -136,6 +136,22 @@ static inline uint32_t get_iC(uint32_t ins) {
 #define CSR_MTVAL       0x343
 #define CSR_MIP         0x344
 
+// exception codes
+#define EC_I_ALIGN       0
+#define EC_I_ACCESS      1
+#define EC_I_ILLEGAL     2
+#define EC_BREAKPOINT    3
+#define EC_L_ALIGN       4
+#define EC_L_ACCESS      5
+#define EC_S_ALIGN       6
+#define EC_S_ACCESS      7
+#define EC_ECALL_FROM_U  8
+#define EC_ECALL_FROM_S  9
+#define EC_ECALL_FROM_M  11
+#define EC_I_PAGEFAULT   12
+#define EC_L_PAGEFAULT   13
+#define EC_S_PAGEFAULT   15
+
 void rvdis(uint32_t pc, uint32_t ins, char *out);
 const char* rvregname(uint32_t n);
 
