@@ -42,6 +42,9 @@ static inline uint32_t get_fn3(uint32_t ins) {
 static inline uint32_t get_fn7(uint32_t ins) {
 	return ins >> 25;
 }
+static inline uint32_t get_ic(uint32_t ins) {
+	return (ins >> 15) & 0x1F;
+}
 
 // opcode constants (6:0)
 #define OC_LOAD     0b0000011
@@ -93,13 +96,18 @@ static inline uint32_t get_fn7(uint32_t ins) {
 #define F3_SUB  0b1000
 #define F3_SRA  0b1101
 
-// further discrimination of OP_BRANCH
+// further discrimination of OC_BRANCH
 #define F3_BEQ  0b000
 #define F3_BNE  0b001
 #define F3_BLT  0b100
 #define F3_BGE  0b101
 #define F3_BLTU 0b110
 #define F3_BGEU 0b111
+
+// further discrimination of OC_SYSTEM (13:12)
+#define F3_CSRRW 0b01
+#define F3_CSRRS 0b10
+#define F3_CSRRC 0b11
 
 void rvdis(uint32_t pc, uint32_t ins, char *out);
 const char* rvregname(uint32_t n);

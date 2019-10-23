@@ -19,6 +19,10 @@ static char *append_u32(char *buf, int32_t n) {
 	return buf + sprintf(buf, "0x%x", n);
 }
 
+static char *append_csr(char *buf, int32_t n) {
+	return buf + sprintf(buf, "0x%03x", n & 0xFFF);
+}
+
 static const char* regname_plain[32] = {
 	"x0", "x1", "x2", "x3", "x4", "x5", "x6", "x7",
 	"x8", "x9", "x10", "x11", "x12", "x13", "x14", "x15",
@@ -75,7 +79,9 @@ void rvdis(uint32_t pc, uint32_t ins, char *out) {
 		case 's': out = append_i32(out, get_is(ins)); break;
 		case 'u': out = append_i32(out, get_iu(ins)); break;
 		case 'U': out = append_u32(out, get_iu(ins)); break;
+		case 'c': out = append_i32(out, get_ic(ins)); break;
 		case 'x': out = append_i32(out, get_r2(ins)); break;
+		case 'C': out = append_csr(out, get_ii(ins)); break;
 		}
 	}
 	*out = 0;
