@@ -24,7 +24,7 @@ out/hello.elf: $(HELLO_SRCS) Makefile
 	@mkdir -p out
 	$(CC) $(CFLAGS) -o $@ $(HELLO_SRCS)
 
-RVSIM_SRCS := rvsim.c rvdis.c
+RVSIM_SRCS := rvmain.c rvsim.c rvdis.c
 bin/rvsim: $(RVSIM_SRCS) Makefile gen/instab.h
 	@mkdir -p bin
 	gcc -O3 -Wall -o $@ $(RVSIM_SRCS)

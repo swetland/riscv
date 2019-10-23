@@ -5,96 +5,95 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
-#include <fcntl.h>
-#include <sys/stat.h>
 
 #include "riscv.h"
+#include "rvsim.h"
 
-uint8_t memory[32768];
+#define DO_TRACE_INS     1
+#define DO_TRACE_TRAPS   1
+#define DO_TRACE_MEM_WR  1
+#define DO_TRACE_REG_WR  1
 
-int load_image(const char* fn, uint8_t* ptr, size_t sz) {
-	struct stat s;
-	int fd = open(fn, O_RDONLY);
-	if (fd < 0) return -1;
-	if (fstat(fd, &s) < 0) return -1;
-	if (s.st_size > sz) return -1;
-	sz = s.st_size;
-	while (sz > 0) {
-		ssize_t r = read(fd, ptr, sz);
-		if (r <= 0) {
-			close(fd);
-			return -1;
-		}
-		ptr += r;
-		sz -= r;
-	}
-	close(fd);
-	fprintf(stderr, "image: %ld bytes\n", s.st_size);
-	return 0;
-}
+#define RVMEMBASE 0x80000000
+#define RVMEMSIZE 32768
+#define RVMEMMASK (RVMEMSIZE - 1)
 
-uint32_t ior32(uint32_t addr) {
-	return 0xffffffff;
-}
-
-void iow32(uint32_t addr, uint32_t val) {
-}
-
-uint32_t rd32(uint32_t addr) {
-	if (addr < 0x80000000) {
-		return ior32(addr);
-	} else {
-		addr &= (sizeof(memory) - 1);
-		return ((uint32_t*) memory)[addr >> 2];
-	}
-}
-void wr32(uint32_t addr, uint32_t val) {
-	if (addr < 0x80000000) {
-		iow32(addr, val);
-	} else {
-		addr &= (sizeof(memory) - 1);
-		((uint32_t*) memory)[addr >> 2] = val;
-	}
-}
-uint32_t rd16(uint32_t addr) {
-	if (addr < 0x80000000) {
-		return 0xffff;
-	} else {
-		addr &= (sizeof(memory) - 1);
-		return ((uint16_t*) memory)[addr >> 1];
-	}
-}
-void wr16(uint32_t addr, uint32_t val) {
-	if (addr >= 0x80000000) {
-		addr &= (sizeof(memory) - 1);
-		((uint16_t*) memory)[addr >> 1] = val;
-	}
-}
-uint32_t rd8(uint32_t addr) {
-	if (addr < 0x80000000) {
-		return 0xff;
-	} else {
-		addr &= (sizeof(memory) - 1);
-		return memory[addr];
-	}
-}
-void wr8(uint32_t addr, uint32_t val) {
-	if (addr >= 0x80000000) {
-		addr &= (sizeof(memory) - 1);
-		memory[addr] = val;
-	}
-}
-
-typedef struct {
+typedef struct rvstate {
 	uint32_t x[32];
-	uint32_t pc;
+	void* memory;
 	uint32_t mscratch;
 	uint32_t mtvec;
 	uint32_t mtval;
 	uint32_t mepc;
 	uint32_t mcause;
 } rvstate_t;
+
+static uint32_t rd32(uint8_t* memory, uint32_t addr) {
+	if (addr < RVMEMBASE) {
+		return ior32(addr);
+	} else {
+		addr &= RVMEMMASK;
+		return ((uint32_t*) memory)[addr >> 2];
+	}
+}
+static void wr32(uint8_t* memory, uint32_t addr, uint32_t val) {
+	if (addr < RVMEMBASE) {
+		iow32(addr, val);
+	} else {
+		addr &= RVMEMMASK;
+		((uint32_t*) memory)[addr >> 2] = val;
+	}
+}
+static uint32_t rd16(uint8_t* memory, uint32_t addr) {
+	if (addr < RVMEMBASE) {
+		return 0xffff;
+	} else {
+		addr &= RVMEMMASK;
+		return ((uint16_t*) memory)[addr >> 1];
+	}
+}
+static void wr16(uint8_t* memory, uint32_t addr, uint32_t val) {
+	if (addr >= RVMEMBASE) {
+		addr &= RVMEMMASK;
+		((uint16_t*) memory)[addr >> 1] = val;
+	}
+}
+static uint32_t rd8(uint8_t* memory, uint32_t addr) {
+	if (addr < RVMEMBASE) {
+		return 0xff;
+	} else {
+		addr &= RVMEMMASK;
+		return memory[addr];
+	}
+}
+static void wr8(uint8_t* memory, uint32_t addr, uint32_t val) {
+	if (addr >= RVMEMBASE) {
+		addr &= RVMEMMASK;
+		memory[addr] = val;
+	}
+}
+
+uint32_t rvsim_rd32(rvstate_t* s, uint32_t addr) {
+	return rd32(s->memory, addr);
+}
+
+int rvsim_init(rvstate_t** _s, void** _memory, uint32_t* _memsize) {
+	rvstate_t *s;
+	if ((s = malloc(sizeof(rvstate_t))) == NULL) {
+		return -1;
+	}
+	memset(s, 0, sizeof(rvstate_t));
+	if ((s->memory = malloc(RVMEMSIZE)) == NULL) {
+		free(s);
+		return -1;
+	}
+	memset(s->memory, 0, RVMEMSIZE);
+	s->mtvec = 0x80000000;
+	*_s = s;
+	*_memory = s->memory;
+	*_memsize = RVMEMSIZE;
+	return 0;
+}
 
 static inline uint32_t rreg(rvstate_t* s, uint32_t n) {
 	return n ? s->x[n] : 0;
@@ -134,46 +133,38 @@ static uint32_t get_csr(rvstate_t* s, uint32_t csr) {
 #define RdRd() rreg(s, get_rd(ins))
 #define WrRd(v) wreg(s, get_rd(ins), v)
 
-#define DO_DISASM 1
-#define DO_TRACK  1
-
-#define trace_reg(fmt...) printf(fmt...)
-
+#if DO_TRACE_REG_WR
 #define trace_reg_wr(v) do {\
 	uint32_t r = get_rd(ins); \
 	if (r) { \
-	printf("          (%s = %08x)\n", \
+	fprintf(stderr, "          (%s = %08x)\n", \
 		rvregname(get_rd(ins)), v); \
 	}} while (0)
+#else
+#define trace_reg_wr(v) do {} while (0)
+#endif
 
+#if DO_TRACE_MEM_WR
 #define trace_mem_wr(a, v) do {\
-	printf("          ([%08x] = %08x)\n", a, v);\
+	fprintf(stderr, "          ([%08x] = %08x)\n", a, v);\
 	} while (0)
+#else
+#define trace_mem_wr(v) do {} while (0)
+#endif
 
-void rvsim(rvstate_t* s) {
-	uint32_t pc = s->pc;
-	uint32_t next = pc;
-	uint32_t ccount = 0;
+int rvsim_exec(rvstate_t* s, uint32_t _pc) {
+	uint32_t pc = _pc;
+	uint32_t next = _pc;
 	uint32_t ins;
 	for (;;) {
-		if (next & 3) {
-			s->mcause = EC_I_ALIGN;
-			s->mepc = pc;
-			s->mtval = next;
-trap_common:
-			s->mepc = pc;
-			pc = s->mtvec & 0xFFFFFFFD;
-		} else {
-			pc = next;
-		}
-		ins = rd32(pc);
-#if DO_DISASM
+		pc = next;
+		ins = rd32(s->memory, pc);
+#if DO_TRACE_INS
 		char dis[128];
 		rvdis(pc, ins, dis);
-		printf("%08x: %08x %s\n", pc, ins, dis);
+		fprintf(stderr, "%08x: %08x %s\n", pc, ins, dis);
 #endif
 		next = pc + 4;
-		ccount++;
 		switch (get_oc(ins)) {
 		case OC_LOAD: {
 			uint32_t a = RdR1() + get_ii(ins);
@@ -181,16 +172,18 @@ trap_common:
 			switch (get_fn3(ins)) {
 			case F3_LW:
 				if (a & 3) goto trap_load_align;
-				v = rd32(a); break;
+				v = rd32(s->memory, a); break;
 			case F3_LHU:
 				if (a & 1) goto trap_load_align;
-				v = rd16(a); break;
-			case F3_LBU: v = rd8(a); break;
+				v = rd16(s->memory, a); break;
+			case F3_LBU:
+				v = rd8(s->memory, a); break;
 			case F3_LH:
 				if (a & 1) goto trap_load_align;
-				v = rd16(a);
+				v = rd16(s->memory, a);
 				if (v & 0x8000) { v |= 0xFFFF0000; } break;
-			case F3_LB: v = rd8(a);
+			case F3_LB:
+				v = rd8(s->memory, a);
 				if (v & 0x80) { v |= 0xFFFFFF00; } break;
 			default:
 				goto inval;
@@ -204,7 +197,7 @@ trap_common:
 			goto trap_common;
 		}
 		case OC_CUSTOM_0:
-			goto inval;
+			return 0;
 		case OC_MISC_MEM:
 			switch (get_fn3(ins)) {
 			case F3_FENCE:
@@ -253,12 +246,12 @@ trap_common:
 			switch (get_fn3(ins)) {
 			case F3_SW:
 				if (a & 3) goto trap_store_align;
-				wr32(a, v); break;
+				wr32(s->memory, a, v); break;
 			case F3_SH:
 				if (a & 1) goto trap_store_align;
-				wr16(a, v); break;
+				wr16(s->memory, a, v); break;
 			case F3_SB:
-				wr8(a, v); break;
+				wr8(s->memory, a, v); break;
 			default:
 				goto inval;
 			}
@@ -311,7 +304,10 @@ trap_common:
 			default:
 				goto inval;
 			}
-			if (p) next = pc + get_ib(ins);
+			if (p) {
+				next = pc + get_ib(ins);
+				if (next & 3) goto trap_pc_align;
+			}
 			break;
 			}
 		case OC_JALR: {
@@ -320,12 +316,14 @@ trap_common:
 			WrRd(next);
 			trace_reg_wr(next);
 			next = a;
+			if (next & 3) goto trap_pc_align;
 			break;
 			}
 		case OC_JAL:
 			WrRd(next);
 			trace_reg_wr(next);
 			next = pc + get_ij(ins);
+			if (next & 3) goto trap_pc_align;
 			break;
 		case OC_SYSTEM: {
 			uint32_t fn = get_fn3(ins);
@@ -371,64 +369,22 @@ trap_common:
 			WrRd(ov);
 			break;
 			}
+trap_pc_align:
+			s->mcause = EC_I_ALIGN;
+			s->mtval = next;
+			goto trap_common;
 		default:
 		inval:
-			return;
+			s->mcause = EC_I_ILLEGAL;
+			s->mtval = ins;
+trap_common:
+			s->mepc = pc;
+			next = s->mtvec & 0xFFFFFFFD;
+#if DO_TRACE_TRAPS
+			fprintf(stderr, "          (TRAP C=%08x V=%08x)\n", s->mcause, s->mtval);
+#endif
+			break;
 		}
 	}
-}
-
-
-int main(int argc, char** argv) {
-	const char* fn = NULL;
-	const char* dumpfn = NULL;
-	uint32_t dumpfrom = 0, dumpto = 0;
-	while (argc > 1) {
-		argc--;
-		argv++;
-		if (argv[0][0] != '-') {
-			if (fn != NULL) {
-				fprintf(stderr, "error: multiple inputs\n");
-				return -1;
-			}
-			fn = argv[0];
-			continue;
-		}
-		if (!strncmp(argv[0],"-dump=",6)) {
-			dumpfn = argv[0] + 6;
-			continue;
-		}
-		if (!strncmp(argv[0],"-from=",6)) {
-			dumpfrom = strtoul(argv[0] + 6, NULL, 16);
-			continue;
-		}
-		if (!strncmp(argv[0],"-to=",4)) {
-			dumpto = strtoul(argv[0] + 4, NULL, 16);
-			continue;
-		}
-		fprintf(stderr, "error: unknown argument: %s\n", argv[0]);
-		return -1;
-	}
-	rvstate_t s;
-	if (load_image(fn, memory, sizeof(memory)) < 0) {
-		fprintf(stderr, "error: failed to load '%s'\n", fn);
-		return -1;
-	}
-	memset(&s, 0, sizeof(s));
-	s.pc = 0x80000000;
-	rvsim(&s);
-	if (dumpfn && (dumpto > dumpfrom)) {
-		FILE* fp;
-		if ((fp = fopen(dumpfn, "w")) == NULL) {
-			fprintf(stderr, "error: failed to open '%s' to write\n", dumpfn);
-			return -1;
-		}
-		for (uint32_t n = dumpfrom; n < dumpto; n += 4) {
-			uint32_t v = rd32(n);
-			fprintf(fp, "%08x\n", v);
-		}
-		fclose(fp);
-	}
-	return 0;
 }
 
