@@ -110,9 +110,11 @@ static inline void wreg(rvstate_t* s, uint32_t n, uint32_t v) {
 #define trace_reg(fmt...) printf(fmt...)
 
 #define trace_reg_wr(v) do {\
+	uint32_t r = get_rd(ins); \
+	if (r) { \
 	printf("          (%s = %08x)\n", \
 		rvregname(get_rd(ins)), v); \
-	} while (0)
+	}} while (0)
 
 #define trace_mem_wr(a, v) do {\
 	printf("          ([%08x] = %08x)\n", a, v);\
@@ -249,12 +251,14 @@ void rvsim(rvstate_t* s) {
 			if (p) next = pc + get_ib(ins);
 			break;
 			}
-		case OC_JALR:
+		case OC_JALR: {
+			uint32_t a = (RdR1() + get_ii(ins)) & 0xFFFFFFFE;
 			if (get_fn3(ins) != 0) goto inval;
 			WrRd(next);
 			trace_reg_wr(next);
-			next = RdR1() + (get_ii(ins) << 1);
+			next = a;
 			break;
+			}
 		case OC_JAL:
 			WrRd(next);
 			trace_reg_wr(next);
