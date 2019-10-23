@@ -9,10 +9,10 @@
 #include "riscv.h"
 #include "rvsim.h"
 
-#define DO_TRACE_INS     1
-#define DO_TRACE_TRAPS   1
-#define DO_TRACE_MEM_WR  1
-#define DO_TRACE_REG_WR  1
+#define DO_TRACE_INS     0
+#define DO_TRACE_TRAPS   0
+#define DO_TRACE_MEM_WR  0
+#define DO_TRACE_REG_WR  0
 
 #define RVMEMBASE 0x80000000
 #define RVMEMSIZE 32768
@@ -149,14 +149,16 @@ static uint32_t get_csr(rvstate_t* s, uint32_t csr) {
 	fprintf(stderr, "          ([%08x] = %08x)\n", a, v);\
 	} while (0)
 #else
-#define trace_mem_wr(v) do {} while (0)
+#define trace_mem_wr(a, v) do {} while (0)
 #endif
 
 int rvsim_exec(rvstate_t* s, uint32_t _pc) {
 	uint32_t pc = _pc;
 	uint32_t next = _pc;
 	uint32_t ins;
+	uint64_t ccount = 0;
 	for (;;) {
+		ccount++;
 		pc = next;
 		ins = rd32(s->memory, pc);
 #if DO_TRACE_INS
@@ -197,7 +199,20 @@ int rvsim_exec(rvstate_t* s, uint32_t _pc) {
 			goto trap_common;
 		}
 		case OC_CUSTOM_0:
-			return 0;
+			switch (get_fn3(ins)) {
+			case 0b000: // _exiti
+				fprintf(stderr, "CCOUNT %lu\n", ccount);
+				return get_ii(ins);
+			case 0b100: // _exit
+				fprintf(stderr, "CCOUNT %lu\n", ccount);
+				return RdR1();
+			case 0b101: // _putc
+				ioputc(RdR1());
+				break;
+			default:
+				goto inval;
+			}
+			break;
 		case OC_MISC_MEM:
 			switch (get_fn3(ins)) {
 			case F3_FENCE:

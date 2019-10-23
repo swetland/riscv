@@ -13,5 +13,5 @@ uint32_t rvsim_rd32(rvstate_t* s, uint32_t addr);
 
 uint32_t ior32(uint32_t addr);
 void iow32(uint32_t addr, uint32_t val);
-
+void ioputc(uint32_t c);
 

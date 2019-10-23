@@ -22,7 +22,7 @@ out/%.lst: out/%.elf
 HELLO_SRCS := start.S hello.c
 out/hello.elf: $(HELLO_SRCS) Makefile
 	@mkdir -p out
-	$(CC) $(CFLAGS) -o $@ $(HELLO_SRCS)
+	$(CC) $(CFLAGS) -o $@ $(HELLO_SRCS) -lgcc
 
 RVSIM_SRCS := rvmain.c rvsim.c rvdis.c
 bin/rvsim: $(RVSIM_SRCS) Makefile gen/instab.h

@@ -18,6 +18,11 @@ uint32_t ior32(uint32_t addr) {
 void iow32(uint32_t addr, uint32_t val) {
 }
 
+void ioputc(uint32_t c) {
+	uint8_t x = c;
+	if (write(1, &x, 1)) {} // appease warning
+}
+
 int load_image(const char* fn, uint8_t* ptr, size_t sz) {
 	struct stat s;
 	int fd = open(fn, O_RDONLY);
