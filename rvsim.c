@@ -9,10 +9,10 @@
 #include "riscv.h"
 #include "rvsim.h"
 
-#define DO_TRACE_INS     1
-#define DO_TRACE_TRAPS   1
-#define DO_TRACE_MEM_WR  1
-#define DO_TRACE_REG_WR  1
+#define DO_TRACE_INS     0
+#define DO_TRACE_TRAPS   0
+#define DO_TRACE_MEM_WR  0
+#define DO_TRACE_REG_WR  0
 
 #define RVMEMBASE 0x80000000
 #define RVMEMSIZE 32768
@@ -26,7 +26,16 @@ typedef struct rvstate {
 	uint32_t mtval;
 	uint32_t mepc;
 	uint32_t mcause;
+	void* ctx;
 } rvstate_t;
+
+void* rvsim_dma(rvstate_t* s, uint32_t va, uint32_t len) {
+	if (va < RVMEMBASE) return NULL;
+	va -= RVMEMBASE;
+	if (va >= RVMEMSIZE) return NULL;
+	if (len > (RVMEMSIZE - va)) return NULL;
+	return s->memory + va;
+}
 
 static uint32_t rd32(uint8_t* memory, uint32_t addr) {
 	if (addr < RVMEMBASE) {
@@ -77,7 +86,7 @@ uint32_t rvsim_rd32(rvstate_t* s, uint32_t addr) {
 	return rd32(s->memory, addr);
 }
 
-int rvsim_init(rvstate_t** _s, void** _memory, uint32_t* _memsize) {
+int rvsim_init(rvstate_t** _s, void* ctx) {
 	rvstate_t *s;
 	if ((s = malloc(sizeof(rvstate_t))) == NULL) {
 		return -1;
@@ -89,9 +98,8 @@ int rvsim_init(rvstate_t** _s, void** _memory, uint32_t* _memsize) {
 	}
 	memset(s->memory, 0, RVMEMSIZE);
 	s->mtvec = 0x80000000;
+	s->ctx = ctx ? ctx : s;
 	*_s = s;
-	*_memory = s->memory;
-	*_memsize = RVMEMSIZE;
 	return 0;
 }
 
@@ -206,8 +214,8 @@ int rvsim_exec(rvstate_t* s, uint32_t _pc) {
 			case 0b100: // _exit
 				fprintf(stderr, "CCOUNT %lu\n", ccount);
 				return RdR1();
-			case 0b101: // _putc
-				ioputc(RdR1());
+			case 0b001: // _iocall
+				s->x[10] = iocall(s->ctx, get_ii(ins), s->x + 10);
 				break;
 			default:
 				goto inval;
