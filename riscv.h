@@ -52,6 +52,7 @@ static inline uint32_t get_iC(uint32_t ins) {
 	return ins >> 20;
 }
 
+
 // opcode constants (6:0)
 #define OC_LOAD     0b0000011
 #define OC_CUSTOM_0 0b0001011
@@ -90,17 +91,28 @@ static inline uint32_t get_iC(uint32_t ins) {
 #define F3_SW 0b010
 
 // further discrimination of OC_OP (14:12) (fn7==0)
-#define F3_ADD  0b0000
-#define F3_SLL  0b0001
-#define F3_SLT  0b0010
-#define F3_SLTU 0b0011
-#define F3_XOR  0b0100
-#define F3_SRL  0b0101
-#define F3_OR   0b0110
-#define F3_AND  0b0111
+#define F3_ADD  0b000
+#define F3_SLL  0b001
+#define F3_SLT  0b010
+#define F3_SLTU 0b011
+#define F3_XOR  0b100
+#define F3_SRL  0b101
+#define F3_OR   0b110
+#define F3_AND  0b111
+
 // OC_OP (14:12) (fn7==0b0100000)
-#define F3_SUB  0b1000
-#define F3_SRA  0b1101
+#define F3_SUB  0b000
+#define F3_SRA  0b101
+
+// OC_OP (14:12) (fn7==0b0000001)
+#define F3_MUL    0b000
+#define F3_MULH   0b001
+#define F3_MULHSU 0b010
+#define F3_MULHU  0b011
+#define F3_DIV    0b100
+#define F3_DIVU   0b101
+#define F3_REM    0b110
+#define F3_REMU   0b111
 
 // further discrimination of OC_BRANCH
 #define F3_BEQ  0b000

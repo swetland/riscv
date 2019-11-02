@@ -9,10 +9,10 @@
 #include "riscv.h"
 #include "rvsim.h"
 
-#define DO_TRACE_INS     0
-#define DO_TRACE_TRAPS   0
-#define DO_TRACE_MEM_WR  0
-#define DO_TRACE_REG_WR  0
+#define DO_TRACE_INS     1
+#define DO_TRACE_TRAPS   1
+#define DO_TRACE_MEM_WR  1
+#define DO_TRACE_REG_WR  1
 
 #define RVMEMBASE 0x80000000
 #define RVMEMSIZE 32768
@@ -280,20 +280,53 @@ int rvsim_exec(rvstate_t* s, uint32_t _pc) {
 		case OC_OP: {
 			uint32_t a = RdR1();
 			uint32_t b = RdR2();
-			uint32_t n;
-			if (ins & 0xBE000000) goto inval;
-			switch (get_fn3(ins) | (ins >> 27)) {
-			case F3_ADD: n = a + b; break;
-			case F3_SLL: n = a << (b & 31); break;
-			case F3_SLT: n = ((int32_t)a) < ((int32_t)b); break;
-			case F3_SLTU: n = a < b; break;
-			case F3_XOR: n = a ^ b; break;
-			case F3_SRL: n = a >> (b & 31); break;
-			case F3_OR: n = a | b; break;
-			case F3_AND: n = a & b; break;
-			case F3_SUB: n = a - b; break;
-			case F3_SRA: n = ((int32_t)a) >> (b & 31); break;
-			default: goto inval;
+			uint32_t n = get_fn3(ins);
+			switch (ins >> 25) {
+			case 0b0000000:
+				switch (n) {
+				case F3_ADD: n = a + b; break;
+				case F3_SLL: n = a << (b & 31); break;
+				case F3_SLT: n = ((int32_t)a) < ((int32_t)b); break;
+				case F3_SLTU: n = a < b; break;
+				case F3_XOR: n = a ^ b; break;
+				case F3_SRL: n = a >> (b & 31); break;
+				case F3_OR: n = a | b; break;
+				case F3_AND: n = a & b; break;
+				}
+				break;
+			case 0b0000001:
+				switch (n) {
+				case F3_MUL: n = a * b; break;
+				case F3_MULH: n = ((int64_t)(int32_t)a * (int64_t)(int32_t)b) >> 32; break;
+				case F3_MULHSU: n = ((int64_t)(int32_t)a * (uint64_t)b) >> 32; break;
+				case F3_MULHU: n = ((uint64_t)a * (uint64_t)b) >> 32; break;
+				case F3_DIV:
+					if (b == 0) { n = 0xffffffff; }
+					else if ((a == 0x80000000) && (b == 0xffffffff)) { n = a; }
+					else { n = ((int32_t)a / (int32_t)b); }
+					break;
+				case F3_DIVU:
+					if (b == 0) { n = 0xffffffff; }
+					else { n = a / b; }
+					break;
+				case F3_REM:
+					if (b == 0) { n = a; }
+					else if ((a == 0x80000000) && (b == 0xffffffff)) { n = 0; }
+					else { n = ((int32_t)a % (int32_t)b); }
+					break;
+				case F3_REMU:
+					if (b == 0) { n = a; }
+					else { n = a % b; }
+					break;
+				}
+				break;
+			case 0b0100000:
+				switch (n) {
+				case F3_SUB: n = a - b; break;
+				case F3_SRA: n = ((int32_t)a) >> (b & 31); break;
+				default: goto inval;
+				}
+				break;
 			}
 			WrRd(n);
 			trace_reg_wr(n);
@@ -392,6 +425,10 @@ trap_pc_align:
 		inval:
 			s->mcause = EC_I_ILLEGAL;
 			s->mtval = ins;
+#if DO_ABORT_INVAL
+			fprintf(stderr,"          (TRAP ILLEGAL %08x)\n", ins);
+			return -1;
+#endif
 trap_common:
 			s->mepc = pc;
 			next = s->mtvec & 0xFFFFFFFD;

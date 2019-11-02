@@ -5,7 +5,7 @@ CC := $(TOOLCHAIN)gcc
 OBJDUMP := $(TOOLCHAIN)objdump
 OBJCOPY := $(TOOLCHAIN)objcopy
 
-CFLAGS := -march=rv32i -mabi=ilp32 -O2 
+CFLAGS := -march=rv32i -mabi=ilp32 -O3
 CFLAGS += -ffreestanding -nostdlib
 CFLAGS += -Wl,-Bstatic,-T,simple.ld
 
@@ -27,7 +27,7 @@ out/hello.elf: $(HELLO_SRCS) Makefile
 RVSIM_SRCS := rvmain.c rvsim.c rvdis.c
 bin/rvsim: $(RVSIM_SRCS) Makefile gen/instab.h
 	@mkdir -p bin
-	gcc -O3 -Wall -o $@ $(RVSIM_SRCS)
+	gcc -g -O3 -Wall -o $@ $(RVSIM_SRCS)
 
 bin/mkinstab: mkinstab.c
 	@mkdir -p bin
