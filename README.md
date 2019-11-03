@@ -14,10 +14,11 @@ $ cd toolchain
 $ ./doit -a riscv32 -j32 -f
 ```
 
-### building the project
+### building and running the simulator and test program
 
 ```
 $ make
+$ ./bin/rvsim out/hello.bin
 ```
 
 ### running the riscv compliance tests
