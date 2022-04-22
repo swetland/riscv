@@ -1,4 +1,6 @@
 
+all: run-tests
+
 RVSIM := bin/rvsim
 TESTROOT := ../riscv-arch-test
 BUILDDIR := tests
@@ -13,51 +15,49 @@ RISCV_OBJDUMP  := $(RISCV_PREFIX)objdump
 RISCV_OBJCOPY  := $(RISCV_PREFIX)objcopy
 RISCV_NM       := $(RISCV_PREFIX)nm
 RISCV_CFLAGS   := -g -static -mcmodel=medany -fvisibility=hidden -nostdlib -nostartfiles
-RISCV_CFLAGS   += -march=rv32i -mabi=ilp32 -DXLEN=32 -Ttarget/link.ld
+RISCV_CFLAGS   += -march=rv32im -mabi=ilp32 -DXLEN=32 -Ttarget/link.ld
 RISCV_CFLAGS   += -I$(TESTROOT)/riscv-test-env -I$(TESTROOT)/riscv-test-env/p -Itarget
-all: run-tests
 
 TESTSUITE := $(TESTROOT)/riscv-test-suite
+TESTGROUPS := rv32i_m/I rv32i_m/M
 
-TESTGROUP := rv32i_m/I
+ALL :=
 
-TESTSRC := $(sort $(wildcard $(TESTSUITE)/$(TESTGROUP)/src/*.S))
+# $1 = source/test.S, $2 = source/test.sig, $3 = build/test
+define test-template
+$(3).elf: $(1)
+	@mkdir -p $$(dir $$@)
+	@echo MAKE: $$@
+	$(V)$(RISCV_GCC) $(RISCV_CFLAGS) -o $$@ $$<
 
+$(3).bin: $(3).elf
+	$(V)$(RISCV_OBJCOPY) -O binary $$< $$@
 
-TESTELF := $(patsubst $(TESTSUITE)/$(TESTGROUP)/src/%.S,$(BUILDDIR)/$(TESTGROUP)/%.elf,$(TESTSRC))
+$(3).lst: $(3).elf
+	$(V)$(RISCV_OBJDUMP) -D $$< > $$@
 
-TESTBIN := $(patsubst %.elf,%.bin,$(TESTELF))
-TESTLST := $(patsubst %.elf,%.lst,$(TESTELF))
-TESTMAP := $(patsubst %.elf,%.map,$(TESTELF))
-TESTLOG := $(patsubst %.elf,%.log,$(TESTELF))
-TESTSIG := $(patsubst %.elf,%.sig,$(TESTELF))
-TESTDIFF := $(patsubst %.elf,%.diff,$(TESTELF))
-TESTPASS := $(patsubst %.elf,%.pass,$(TESTELF))
+$(3).map: $(3).elf
+	$(V)$(RISCV_NM) $$< > $$@
 
-.SECONDARY: $(TESTELF) $(TESTLST) $(TESTMAP) $(TESTBIN)
+$(3).pass: $(3).bin $(3).map $(3).lst
+	@echo TEST: $(3)
+	$(V)$(RVSIM) $$< -dump=$(3).sig \
+	-from=$$$$(grep begin_signature $(3).map | awk '{print $$$$1}') \
+	-to=$$$$(grep end_signature $(3).map | awk '{print $$$$1}') \
+	2> $(3).log 1>&2
+	$(V)if diff $(3).sig $(2) > $(3).diff ;\
+	then echo PASS: $(3) ; touch $$@ ;\
+	else echo FAIL: $(3) ; exit 1 ; fi
 
-.PRECIOUS: $(TESTLOG) $(TESTSIG) $(TESTDIFF)
+.PRECIOUS: $(3).elf $(3).bin $(3).lst $(3).map $(3).log $(3).sig $(3).diff
 
-$(BUILDDIR)/$(TESTGROUP)/%.elf: $(TESTSUITE)/$(TESTGROUP)/src/%.S
-	@mkdir -p $(dir $@)
-	@echo building $@
-	$(V)$(RISCV_GCC) $(RISCV_CFLAGS) -o $@ $<
+ALL += $(3).pass
+endef
 
-$(BUILDDIR)/%.map: $(BUILDDIR)/%.elf
-	$(V)$(RISCV_NM) $< > $@
+$(foreach grp,$(TESTGROUPS),\
+$(foreach src,$(wildcard $(TESTSUITE)/$(grp)/src/*.S),\
+$(eval $(call test-template,$(src)\
+,$(patsubst $(TESTSUITE)/$(grp)/src/%.S,$(TESTSUITE)/$(grp)/references/%.reference_output,$(src))\
+,$(patsubst $(TESTSUITE)/$(grp)/src/%.S,$(BUILDDIR)/$(grp)/%,$(src))))))
 
-$(BUILDDIR)/%.bin: $(BUILDDIR)/%.elf 
-	$(V)$(RISCV_OBJCOPY) -O binary $< $@
-
-$(BUILDDIR)/%.lst: $(BUILDDIR)/%.elf
-	$(V)$(RISCV_OBJDUMP) -D $< > $@
-
-$(BUILDDIR)/%.pass: $(BUILDDIR)/%.bin $(BUILDDIR)/%.map $(BUILDDIR)/%.lst
-	@echo running $<
-	$(V)$(RVSIM) $< -dump=$(patsubst %.pass,%.sig,$@) \
-	-from=$$(grep begin_signature $(patsubst %.pass,%.map,$@) | awk '{print $$1}') \
-	-to=$$(grep end_signature $(patsubst %.pass,%.map,$@) | awk '{print $$1}') \
-	2> $(patsubst %.pass,%.log,$@) 1>&2
-	$(V)if diff $(patsubst %.pass,%.sig,$@) $(patsubst $(BUILDDIR)/$(TESTGROUP)/%.pass,$(TESTSUITE)/$(TESTGROUP)/references/%.reference_output,$@) > $(patsubst %.pass,%.diff,$@) ; then echo PASS ; touch $@; else echo FAIL ; exit 1 ; fi
-
-run-tests: $(TESTPASS)
+run-tests: $(ALL)
