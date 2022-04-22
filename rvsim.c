@@ -14,8 +14,10 @@
 #define DO_TRACE_MEM_WR  0
 #define DO_TRACE_REG_WR  0
 
+#define DO_ABORT_INVAL   0
+
 #define RVMEMBASE 0x80000000
-#define RVMEMSIZE 32768
+#define RVMEMSIZE 0x01000000
 #define RVMEMMASK (RVMEMSIZE - 1)
 
 typedef struct rvstate {

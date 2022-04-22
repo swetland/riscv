@@ -104,7 +104,7 @@ int main(int argc, char** argv) {
 	}
 	void* memory;
 	uint32_t membase = 0x80000000;
-	uint32_t memsize = 32768;
+	uint32_t memsize = 0x01000000;
 	rvstate_t* s;
 
 	if (rvsim_init(&s, NULL)) {
