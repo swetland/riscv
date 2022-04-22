@@ -23,10 +23,9 @@ $ ./bin/rvsim out/hello.bin
 
 ### running the riscv compliance tests
 
-The scripts in `compliance/` check out, build, and run riscv compliance suite from github.
+Check out https://github.com/riscv-non-isa/riscv-arch-test adjacent to this directory.
 
 ```
-$ cd compliance
-$ ./setup.sh
-$ ./run.sh
+make -f Makefile.test
 ```
+

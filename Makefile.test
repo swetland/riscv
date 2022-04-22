@@ -1,0 +1,63 @@
+
+RVSIM := bin/rvsim
+TESTROOT := ../riscv-arch-test
+BUILDDIR := tests
+
+V ?= @
+
+RISCV_PREFIX := /work/riscv/toolchains/riscv32-elf-7.3.0-Linux-x86_64/bin/riscv32-elf-
+#RISCV_PREFIX   := riscv32-unknown-elf-
+
+RISCV_GCC      := $(RISCV_PREFIX)gcc
+RISCV_OBJDUMP  := $(RISCV_PREFIX)objdump
+RISCV_OBJCOPY  := $(RISCV_PREFIX)objcopy
+RISCV_NM       := $(RISCV_PREFIX)nm
+RISCV_CFLAGS   := -g -static -mcmodel=medany -fvisibility=hidden -nostdlib -nostartfiles
+RISCV_CFLAGS   += -march=rv32i -mabi=ilp32 -DXLEN=32 -Ttarget/link.ld
+RISCV_CFLAGS   += -I$(TESTROOT)/riscv-test-env -I$(TESTROOT)/riscv-test-env/p -Itarget
+all: run-tests
+
+TESTSUITE := $(TESTROOT)/riscv-test-suite
+
+TESTGROUP := rv32i_m/I
+
+TESTSRC := $(sort $(wildcard $(TESTSUITE)/$(TESTGROUP)/src/*.S))
+
+
+TESTELF := $(patsubst $(TESTSUITE)/$(TESTGROUP)/src/%.S,$(BUILDDIR)/$(TESTGROUP)/%.elf,$(TESTSRC))
+
+TESTBIN := $(patsubst %.elf,%.bin,$(TESTELF))
+TESTLST := $(patsubst %.elf,%.lst,$(TESTELF))
+TESTMAP := $(patsubst %.elf,%.map,$(TESTELF))
+TESTLOG := $(patsubst %.elf,%.log,$(TESTELF))
+TESTSIG := $(patsubst %.elf,%.sig,$(TESTELF))
+TESTDIFF := $(patsubst %.elf,%.diff,$(TESTELF))
+TESTPASS := $(patsubst %.elf,%.pass,$(TESTELF))
+
+.SECONDARY: $(TESTELF) $(TESTLST) $(TESTMAP) $(TESTBIN)
+
+.PRECIOUS: $(TESTLOG) $(TESTSIG) $(TESTDIFF)
+
+$(BUILDDIR)/$(TESTGROUP)/%.elf: $(TESTSUITE)/$(TESTGROUP)/src/%.S
+	@mkdir -p $(dir $@)
+	@echo building $@
+	$(V)$(RISCV_GCC) $(RISCV_CFLAGS) -o $@ $<
+
+$(BUILDDIR)/%.map: $(BUILDDIR)/%.elf
+	$(V)$(RISCV_NM) $< > $@
+
+$(BUILDDIR)/%.bin: $(BUILDDIR)/%.elf 
+	$(V)$(RISCV_OBJCOPY) -O binary $< $@
+
+$(BUILDDIR)/%.lst: $(BUILDDIR)/%.elf
+	$(V)$(RISCV_OBJDUMP) -D $< > $@
+
+$(BUILDDIR)/%.pass: $(BUILDDIR)/%.bin $(BUILDDIR)/%.map $(BUILDDIR)/%.lst
+	@echo running $<
+	$(V)$(RVSIM) $< -dump=$(patsubst %.pass,%.sig,$@) \
+	-from=$$(grep begin_signature $(patsubst %.pass,%.map,$@) | awk '{print $$1}') \
+	-to=$$(grep end_signature $(patsubst %.pass,%.map,$@) | awk '{print $$1}') \
+	2> $(patsubst %.pass,%.log,$@) 1>&2
+	$(V)if diff $(patsubst %.pass,%.sig,$@) $(patsubst $(BUILDDIR)/$(TESTGROUP)/%.pass,$(TESTSUITE)/$(TESTGROUP)/references/%.reference_output,$@) > $(patsubst %.pass,%.diff,$@) ; then echo PASS ; touch $@; else echo FAIL ; exit 1 ; fi
+
+run-tests: $(TESTPASS)
