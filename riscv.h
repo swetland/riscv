@@ -28,7 +28,7 @@ static inline uint32_t get_ib(uint32_t ins) {
 	return ((ins >> 7) & 0x1e) |
 		((ins >> 20) & 0x7e0) |
 		((ins << 4) & 0x800) |
-		(((int32_t)(ins & 0x80000000)) >> 20);
+		(((int32_t)(ins & 0x80000000)) >> 19);
 }
 static inline uint32_t get_iu(uint32_t ins) {
 	return ins & 0xFFFFF000;
